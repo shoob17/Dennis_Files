@@ -2,54 +2,83 @@ using UnityEngine;
 
 public class Movement : MonoBehaviour
 {
-    [Header("Movement")]
-    public float walkSpeed = 4f;
-    public float maxVelocityChange = 10f;
+    public bool CanMove { get; private set; } = true;
+    private bool isSprinting => canSprint && Input.GetKey(sprintKey);
 
-    [Header("Jumping")]
-    public float jumpForce = 5f;
+    [Header("Functional Options")]
+    [SerializeField] private bool canSprint = true;
 
-    private Vector2 input;
-    private Rigidbody rb;
-    private bool isGrounded;
+    [Header("Controls")]
+    [SerializeField] private KeyCode sprintKey = KeyCode.LeftShift;
 
-    void Start()
+    [Header("Movement Parameters")]
+    [SerializeField] private float walkSpeed = 4.0f;
+    [SerializeField] private float sprintSpeed = 6.0f;
+    [SerializeField] private float gravity = 30.0f;
+
+    [Header("Look Parameters")]
+    [SerializeField, Range(1, 10)] private float lookSpeedX = 2.0f;
+    [SerializeField, Range(1, 10)] private float lookSpeedY = 2.0f;
+    [SerializeField, Range(1, 180)] private float upperLookLimit = 80.0f;
+    [SerializeField, Range(1, 180)] private float lowerLookLimit = 80.0f;
+
+    [Header("Sprint Parameters")]
+
+    [Header("Jump Parameters")]
+
+    private Camera playerCamera;
+    private CharacterController characterController;
+
+    private Vector3 moveDirection;
+    private Vector2 currentInput;
+
+    private float rotationX = 0;
+
+
+    void Awake()
     {
-        rb = GetComponent<Rigidbody>();
+        playerCamera = GetComponentInChildren<Camera>();
+        characterController = GetComponent<CharacterController>();
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     void Update()
     {
-        input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")).normalized;
-        
-        if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
+        if (CanMove)
         {
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            HandleMovementInput();
+            HandleMouseLook();
+
+            ApplyFinalMovements();
         }
     }
 
-    void FixedUpdate()
+    private void HandleMovementInput()
     {
-        rb.AddForce(CalculateMovement(), ForceMode.VelocityChange);
+        currentInput = new Vector2((isSprinting ? sprintSpeed : walkSpeed) * Input.GetAxisRaw("Vertical"), (isSprinting ? sprintSpeed : walkSpeed) * Input.GetAxisRaw("Horizontal"));
 
-        isGrounded = false;
+        float moveDirectionY = moveDirection.y;
+        moveDirection = (transform.TransformDirection(Vector3.forward) * currentInput.x) + (transform.TransformDirection(Vector3.right) * currentInput.y);
+        moveDirection.y = moveDirectionY;
+        moveDirection = moveDirection.normalized * Mathf.Clamp(moveDirection.magnitude, 0, (isSprinting ? sprintSpeed : walkSpeed));
     }
 
-    Vector3 CalculateMovement()
+
+    private void HandleMouseLook()
     {
-        Vector3 targetVelocity = transform.TransformDirection(new Vector3(input.x, 0f, input.y)) * walkSpeed;
-        Vector3 velocityChange = targetVelocity - rb.linearVelocity;
-
-        velocityChange.x = Mathf.Clamp(velocityChange.x, -maxVelocityChange, maxVelocityChange);
-        velocityChange.z = Mathf.Clamp(velocityChange.z, -maxVelocityChange, maxVelocityChange);
-        velocityChange.y = 0f;
-
-        return input.magnitude > 0.5f ? velocityChange : Vector3.zero;
+        rotationX -= Input.GetAxis("Mouse Y") * lookSpeedY;
+        rotationX = Mathf.Clamp(rotationX, -upperLookLimit, lowerLookLimit);
+        playerCamera.transform.localRotation = Quaternion.Euler(rotationX, 0, 0);
+        transform.rotation *= Quaternion.Euler(0, Input.GetAxis("Mouse X") * lookSpeedX, 0);
     }
 
-    void OnCollisionStay(Collision collision)
+    private void ApplyFinalMovements()
     {
-        isGrounded = true;
+        if (!characterController.isGrounded)
+            moveDirection.y -= gravity * Time.deltaTime;
 
+        characterController.Move(walkSpeed * moveDirection * Time.deltaTime);
     }
+
 }
